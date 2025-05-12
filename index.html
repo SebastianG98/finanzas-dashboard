@@ -36,14 +36,14 @@
   <canvas id="gastoPorTarjeta"></canvas>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza por tu ID de Google Sheets
+    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza por tu Sheet real
     const SHEET_NAME = 'Registros';
     const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
 
     let datosOriginales = [];
 
     function isInCurrentCut(fechaStr, inicioStr, finStr) {
-      if (!inicioStr || !finStr) return false;
+      if (!fechaStr || !inicioStr || !finStr) return false;
       const fecha = new Date(fechaStr);
       const inicio = new Date(inicioStr);
       const fin = new Date(finStr);
@@ -53,19 +53,19 @@
     function parseData(raw) {
       const jsonData = JSON.parse(raw.substring(47).slice(0, -2));
       return jsonData.table.rows.map(row => ({
-        fecha: row.c[0]?.v,
+        fecha: row.c[0]?.f || row.c[0]?.v || "", // usa string de fecha
         monto: parseFloat(row.c[1]?.v || 0),
-        tipo: row.c[2]?.v,
-        tarjeta: row.c[3]?.v,
-        concepto: row.c[4]?.v,
-        tienda: row.c[5]?.v,
-        categoria: row.c[6]?.v,
+        tipo: row.c[2]?.v || "",
+        tarjeta: row.c[3]?.v || "",
+        concepto: row.c[4]?.v || "",
+        tienda: row.c[5]?.v || "",
+        categoria: row.c[6]?.v || "",
         msi: parseInt(row.c[7]?.v || 0),
         total_msi: parseInt(row.c[8]?.v || 0),
-        inicio_corte: row.c[9]?.v,
-        fin_corte: row.c[10]?.v,
-        fecha_pago: row.c[11]?.v,
-        notas: row.c[12]?.v
+        inicio_corte: row.c[9]?.f || row.c[9]?.v || "",
+        fin_corte: row.c[10]?.f || row.c[10]?.v || "",
+        fecha_pago: row.c[11]?.f || row.c[11]?.v || "",
+        notas: row.c[12]?.v || ""
       }));
     }
 
@@ -101,7 +101,6 @@
           else ahorro += d.monto;
         } else if (d.tipo === 'Gasto') {
           gastos += d.monto;
-
           gastoPorCategoria[d.categoria] = (gastoPorCategoria[d.categoria] || 0) + d.monto;
           gastoPorTarjeta[d.tarjeta] = (gastoPorTarjeta[d.tarjeta] || 0) + d.monto;
 
