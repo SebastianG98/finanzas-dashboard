@@ -1,107 +1,114 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard Finanzas Personales</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; }
-    h1 { color: #2E86C1; }
-    .container { max-width: 1000px; margin: auto; }
-    canvas { margin-top: 40px; }
-    button {
-      padding: 10px 20px; background-color: #2E86C1; color: white;
-      border: none; border-radius: 5px; cursor: pointer; margin-top: 20px;
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1, h2 { color: #2C3E50; }
+    .kpi-box { margin: 10px 0; }
+    canvas { max-width: 700px; margin-bottom: 40px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Dashboard Finanzas Personales Gueguero</h1>
-    <p id="resumen"></p>
-    <canvas id="gastosPorCategoria"></canvas>
-    <canvas id="gastosPorTarjeta"></canvas>
-
-    <button onclick="generarInsight()">Obtener Insight con ChatGPT</button>
-    <p id="insight"></p>
-  </div>
+  <h1>Dashboard de Finanzas Personales</h1>
+  <div class="kpi-box" id="kpis"></div>
+  <canvas id="gastoPorCategoria"></canvas>
+  <canvas id="gastoPorTarjeta"></canvas>
 
   <script>
     const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M';
     const SHEET_NAME = 'Registros';
     const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
 
-    let datos = [];
+    function isInCurrentCut(fechaStr, inicioStr, finStr) {
+      if (!inicioStr || !finStr) return false;
+      const fecha = new Date(fechaStr);
+      const inicio = new Date(inicioStr);
+      const fin = new Date(finStr);
+      return fecha >= inicio && fecha <= fin;
+    }
 
-    async function cargarDatos() {
-      const res = await fetch(API_URL);
-      const texto = await res.text();
-      const json = JSON.parse(texto.substr(47).slice(0, -2));
+    fetch(API_URL)
+      .then(res => res.text())
+      .then(rep => {
+        const jsonData = JSON.parse(rep.substring(47).slice(0, -2));
+        const data = jsonData.table.rows.map(row => ({
+          fecha: row.c[0]?.v,
+          monto: parseFloat(row.c[1]?.v || 0),
+          tipo: row.c[2]?.v,
+          tarjeta: row.c[3]?.v,
+          concepto: row.c[4]?.v,
+          tienda: row.c[5]?.v,
+          categoria: row.c[6]?.v,
+          msi: parseInt(row.c[7]?.v || 0),
+          total_msi: parseInt(row.c[8]?.v || 0),
+          inicio_corte: row.c[9]?.v,
+          fin_corte: row.c[10]?.v,
+          fecha_pago: row.c[11]?.v,
+          notas: row.c[12]?.v
+        }));
 
-      const cols = json.table.cols.map(c => c.label);
-      datos = json.table.rows.map(row => {
-        const obj = {};
-        row.c.forEach((cell, idx) => {
-          obj[cols[idx]] = cell ? cell.v : '';
+        let ingresos = 0, gastos = 0, ahorro = 0;
+        let gastoPorCategoria = {}, gastoPorTarjeta = {};
+
+        data.forEach(d => {
+          if (d.tipo === 'Ingreso') ingresos += d.monto;
+          else if (d.tipo === 'Ahorro/Inversion') ahorro += d.monto;
+          else if (d.tipo === 'Gasto') {
+            gastos += d.monto;
+
+            gastoPorCategoria[d.categoria] = (gastoPorCategoria[d.categoria] || 0) + d.monto;
+
+            if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
+              gastoPorTarjeta[d.tarjeta] = (gastoPorTarjeta[d.tarjeta] || 0) + d.monto;
+            }
+          }
         });
-        return obj;
-      });
 
-      procesarDatos();
-    }
+        const saldo = ingresos - gastos;
+        const ahorroPorcentaje = ingresos > 0 ? ((ahorro / ingresos) * 100).toFixed(2) : 0;
 
-    function procesarDatos() {
-      const ingresos = datos.filter(d => d.Tipo === 'Ingreso');
-      const gastos = datos.filter(d => d.Tipo === 'Gasto');
+        document.getElementById('kpis').innerHTML = `
+          <h2>Resumen</h2>
+          <p><strong>Ingresos:</strong> $${ingresos.toFixed(2)}</p>
+          <p><strong>Gastos:</strong> $${gastos.toFixed(2)}</p>
+          <p><strong>Ahorro/Inversión:</strong> $${ahorro.toFixed(2)}</p>
+          <p><strong>Saldo Disponible:</strong> $${saldo.toFixed(2)}</p>
+          <p><strong>% Ahorrado:</strong> ${ahorroPorcentaje}%</p>
+        `;
 
-      const totalIngresos = ingresos.reduce((s, i) => s + Number(i.Monto || 0), 0);
-      const totalGastos = gastos.reduce((s, g) => s + Number(g.Monto || 0), 0);
-      const saldo = totalIngresos - totalGastos;
-      const ahorroRecomendado = totalIngresos * 0.2;
+        new Chart(document.getElementById("gastoPorCategoria"), {
+          type: 'bar',
+          data: {
+            labels: Object.keys(gastoPorCategoria),
+            datasets: [{
+              label: 'Gasto por Categoría',
+              data: Object.values(gastoPorCategoria),
+              backgroundColor: 'rgba(52, 152, 219, 0.6)',
+              borderColor: 'rgba(41, 128, 185, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: { scales: { y: { beginAtZero: true } } }
+        });
 
-      document.getElementById('resumen').innerHTML = `
-        <strong>Ingresos:</strong> $${totalIngresos.toFixed(2)}<br>
-        <strong>Gastos:</strong> $${totalGastos.toFixed(2)}<br>
-        <strong>Saldo Disponible:</strong> $${saldo.toFixed(2)}<br>
-        <strong>Ahorro Recomendado:</strong> $${ahorroRecomendado.toFixed(2)}
-      `;
-
-      const gastoCat = {};
-      const gastoTar = {};
-      for (let g of gastos) {
-        gastoCat[g.Categoría] = (gastoCat[g.Categoría] || 0) + Number(g.Monto);
-        gastoTar[g.Tarjeta] = (gastoTar[g.Tarjeta] || 0) + Number(g.Monto);
-      }
-
-      generarGrafico('gastosPorCategoria', 'Gasto por Categoría', gastoCat);
-      generarGrafico('gastosPorTarjeta', 'Gasto por Tarjeta', gastoTar);
-    }
-
-    function generarGrafico(canvasId, titulo, datos) {
-      const ctx = document.getElementById(canvasId).getContext('2d');
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: Object.keys(datos),
-          datasets: [{
-            label: titulo,
-            data: Object.values(datos),
-            backgroundColor: '#2E86C1'
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false }, title: { display: true, text: titulo } }
-        }
-      });
-    }
-
-    function generarInsight() {
-      document.getElementById('insight').innerText = '🔒 Esta funcionalidad necesita un backend para proteger tu API Key de ChatGPT.';
-    }
-
-    cargarDatos();
+        new Chart(document.getElementById("gastoPorTarjeta"), {
+          type: 'bar',
+          data: {
+            labels: Object.keys(gastoPorTarjeta),
+            datasets: [{
+              label: 'Gasto por Tarjeta (Corte Actual)',
+              data: Object.values(gastoPorTarjeta),
+              backgroundColor: 'rgba(231, 76, 60, 0.6)',
+              borderColor: 'rgba(192, 57, 43, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: { scales: { y: { beginAtZero: true } } }
+        });
+      })
+      .catch(err => console.error("Error cargando datos:", err));
   </script>
 </body>
 </html>
