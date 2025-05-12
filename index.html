@@ -6,14 +6,22 @@
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     h1, h2 { color: #2C3E50; }
-    .kpi-box, .tarjeta-cards, .filtro-box { margin: 10px 0; }
+    .kpi-box, .tarjeta-cards, .filtro-box, .leyenda-box { margin: 10px 0; }
     .card { display: inline-block; background: #f7f7f7; padding: 15px; border: 1px solid #ccc; border-radius: 8px; margin: 10px; }
     canvas { max-width: 700px; margin-bottom: 40px; display: block; }
     input[type="date"] { margin: 5px; padding: 5px; }
+    .leyenda-box { font-size: 14px; color: #555; background: #eef; padding: 10px; border-radius: 6px; }
   </style>
 </head>
 <body>
   <h1>Dashboard de Finanzas Personales</h1>
+
+  <div class="leyenda-box">
+    <p>
+      🔎 <strong>Filtro de fechas:</strong> afecta los ingresos, gastos, ahorro, inversión y gráficos. Se basa en la <strong>fecha de compra</strong> (columna <code>Fecha</code>).<br>
+      💳 <strong>Tarjetas en Corte Activo:</strong> se calculan aparte usando <code>Fecha Inicio Corte</code> y <code>Fecha Corte</code> por registro, independientemente del filtro.
+    </p>
+  </div>
 
   <div class="filtro-box">
     <label>Fecha inicio: <input type="date" id="fechaInicio"></label>
@@ -28,7 +36,7 @@
   <canvas id="gastoPorTarjeta"></canvas>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza por el ID real de tu Google Sheets
+    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza por tu ID de Google Sheets
     const SHEET_NAME = 'Registros';
     const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
 
@@ -62,13 +70,21 @@
     }
 
     function filtrarDatos() {
-      const inicio = new Date(document.getElementById('fechaInicio').value);
-      const finInput = new Date(document.getElementById('fechaFin').value);
-      const fin = new Date(finInput.setHours(23, 59, 59, 999)); // incluye todo el día
+      const inicioInput = document.getElementById('fechaInicio').value;
+      const finInput = document.getElementById('fechaFin').value;
+
+      if (!inicioInput || !finInput) {
+        alert("Por favor selecciona una fecha de inicio y una de fin.");
+        return;
+      }
+
+      const inicio = new Date(inicioInput);
+      const fin = new Date(new Date(finInput).setHours(23, 59, 59, 999));
 
       const filtrados = datosOriginales.filter(d => {
-        const fecha = new Date(d.fecha);
-        return fecha >= inicio && fecha <= fin;
+        if (!d.fecha) return false;
+        const fechaGasto = new Date(d.fecha);
+        return fechaGasto >= inicio && fechaGasto <= fin;
       });
 
       renderDashboard(filtrados);
