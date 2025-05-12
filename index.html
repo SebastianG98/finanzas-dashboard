@@ -6,20 +6,33 @@
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     h1, h2 { color: #2C3E50; }
-    .kpi-box { margin: 10px 0; }
-    canvas { max-width: 700px; margin-bottom: 40px; }
+    .kpi-box, .tarjeta-cards, .filtro-box { margin: 10px 0; }
+    .card { display: inline-block; background: #f7f7f7; padding: 15px; border: 1px solid #ccc; border-radius: 8px; margin: 10px; }
+    canvas { max-width: 700px; margin-bottom: 40px; display: block; }
+    input[type="date"] { margin: 5px; padding: 5px; }
   </style>
 </head>
 <body>
   <h1>Dashboard de Finanzas Personales</h1>
+
+  <div class="filtro-box">
+    <label>Fecha inicio: <input type="date" id="fechaInicio"></label>
+    <label>Fecha fin: <input type="date" id="fechaFin"></label>
+    <button onclick="filtrarDatos()">Aplicar Filtro</button>
+  </div>
+
   <div class="kpi-box" id="kpis"></div>
+  <div class="tarjeta-cards" id="tarjetaCards"></div>
+
   <canvas id="gastoPorCategoria"></canvas>
   <canvas id="gastoPorTarjeta"></canvas>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M';
+    const SHEET_ID = 'REEMPLAZAR_POR_TU_ID'; // <- reemplaza por el ID de tu hoja de cálculo
     const SHEET_NAME = 'Registros';
     const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
+
+    let datosOriginales = [];
 
     function isInCurrentCut(fechaStr, inicioStr, finStr) {
       if (!inicioStr || !finStr) return false;
@@ -29,84 +42,111 @@
       return fecha >= inicio && fecha <= fin;
     }
 
+    function parseData(raw) {
+      const jsonData = JSON.parse(raw.substring(47).slice(0, -2));
+      return jsonData.table.rows.map(row => ({
+        fecha: row.c[0]?.v,
+        monto: parseFloat(row.c[1]?.v || 0),
+        tipo: row.c[2]?.v,
+        tarjeta: row.c[3]?.v,
+        concepto: row.c[4]?.v,
+        tienda: row.c[5]?.v,
+        categoria: row.c[6]?.v,
+        msi: parseInt(row.c[7]?.v || 0),
+        total_msi: parseInt(row.c[8]?.v || 0),
+        inicio_corte: row.c[9]?.v,
+        fin_corte: row.c[10]?.v,
+        fecha_pago: row.c[11]?.v,
+        notas: row.c[12]?.v
+      }));
+    }
+
+    function filtrarDatos() {
+      const inicio = new Date(document.getElementById('fechaInicio').value);
+      const fin = new Date(document.getElementById('fechaFin').value);
+
+      const filtrados = datosOriginales.filter(d => {
+        const fecha = new Date(d.fecha);
+        return fecha >= inicio && fecha <= fin;
+      });
+
+      renderDashboard(filtrados);
+    }
+
+    function renderDashboard(data) {
+      let ingresos = 0, gastos = 0, ahorro = 0, inversion = 0;
+      let gastoPorCategoria = {}, gastoPorTarjeta = {}, tarjetasActivas = {};
+
+      data.forEach(d => {
+        if (d.tipo === 'Ingreso') ingresos += d.monto;
+        else if (d.tipo === 'Ahorro/Inversion') {
+          if (d.categoria.toLowerCase().includes('invers')) inversion += d.monto;
+          else ahorro += d.monto;
+        } else if (d.tipo === 'Gasto') {
+          gastos += d.monto;
+
+          gastoPorCategoria[d.categoria] = (gastoPorCategoria[d.categoria] || 0) + d.monto;
+          gastoPorTarjeta[d.tarjeta] = (gastoPorTarjeta[d.tarjeta] || 0) + d.monto;
+
+          if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
+            tarjetasActivas[d.tarjeta] = (tarjetasActivas[d.tarjeta] || 0) + d.monto;
+          }
+        }
+      });
+
+      const disponible = ingresos - gastos - ahorro - inversion;
+
+      document.getElementById('kpis').innerHTML = `
+        <h2>Resumen</h2>
+        <p><strong>Ingresos:</strong> $${ingresos.toFixed(2)}</p>
+        <p><strong>Gastos:</strong> $${gastos.toFixed(2)}</p>
+        <p><strong>Ahorro:</strong> $${ahorro.toFixed(2)}</p>
+        <p><strong>Inversión:</strong> $${inversion.toFixed(2)}</p>
+        <p><strong>Disponible:</strong> $${disponible.toFixed(2)}</p>
+      `;
+
+      let cardsHTML = '<h2>Tarjetas en Corte Activo</h2>';
+      for (let tarjeta in tarjetasActivas) {
+        cardsHTML += `<div class="card"><strong>${tarjeta}</strong><br>$${tarjetasActivas[tarjeta].toFixed(2)}</div>`;
+      }
+      document.getElementById('tarjetaCards').innerHTML = cardsHTML;
+
+      new Chart(document.getElementById("gastoPorCategoria"), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(gastoPorCategoria),
+          datasets: [{
+            label: 'Gasto por Categoría',
+            data: Object.values(gastoPorCategoria),
+            backgroundColor: 'rgba(52, 152, 219, 0.6)',
+            borderColor: 'rgba(41, 128, 185, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: { scales: { y: { beginAtZero: true } } }
+      });
+
+      new Chart(document.getElementById("gastoPorTarjeta"), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(gastoPorTarjeta),
+          datasets: [{
+            label: 'Gasto por Tarjeta (según filtro)',
+            data: Object.values(gastoPorTarjeta),
+            backgroundColor: 'rgba(231, 76, 60, 0.6)',
+            borderColor: 'rgba(192, 57, 43, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: { scales: { y: { beginAtZero: true } } }
+      });
+    }
+
     fetch(API_URL)
       .then(res => res.text())
       .then(rep => {
-        const jsonData = JSON.parse(rep.substring(47).slice(0, -2));
-        const data = jsonData.table.rows.map(row => ({
-          fecha: row.c[0]?.v,
-          monto: parseFloat(row.c[1]?.v || 0),
-          tipo: row.c[2]?.v,
-          tarjeta: row.c[3]?.v,
-          concepto: row.c[4]?.v,
-          tienda: row.c[5]?.v,
-          categoria: row.c[6]?.v,
-          msi: parseInt(row.c[7]?.v || 0),
-          total_msi: parseInt(row.c[8]?.v || 0),
-          inicio_corte: row.c[9]?.v,
-          fin_corte: row.c[10]?.v,
-          fecha_pago: row.c[11]?.v,
-          notas: row.c[12]?.v
-        }));
-
-        let ingresos = 0, gastos = 0, ahorro = 0;
-        let gastoPorCategoria = {}, gastoPorTarjeta = {};
-
-        data.forEach(d => {
-          if (d.tipo === 'Ingreso') ingresos += d.monto;
-          else if (d.tipo === 'Ahorro/Inversion') ahorro += d.monto;
-          else if (d.tipo === 'Gasto') {
-            gastos += d.monto;
-
-            gastoPorCategoria[d.categoria] = (gastoPorCategoria[d.categoria] || 0) + d.monto;
-
-            if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
-              gastoPorTarjeta[d.tarjeta] = (gastoPorTarjeta[d.tarjeta] || 0) + d.monto;
-            }
-          }
-        });
-
-        const saldo = ingresos - gastos;
-        const ahorroPorcentaje = ingresos > 0 ? ((ahorro / ingresos) * 100).toFixed(2) : 0;
-
-        document.getElementById('kpis').innerHTML = `
-          <h2>Resumen</h2>
-          <p><strong>Ingresos:</strong> $${ingresos.toFixed(2)}</p>
-          <p><strong>Gastos:</strong> $${gastos.toFixed(2)}</p>
-          <p><strong>Ahorro/Inversión:</strong> $${ahorro.toFixed(2)}</p>
-          <p><strong>Saldo Disponible:</strong> $${saldo.toFixed(2)}</p>
-          <p><strong>% Ahorrado:</strong> ${ahorroPorcentaje}%</p>
-        `;
-
-        new Chart(document.getElementById("gastoPorCategoria"), {
-          type: 'bar',
-          data: {
-            labels: Object.keys(gastoPorCategoria),
-            datasets: [{
-              label: 'Gasto por Categoría',
-              data: Object.values(gastoPorCategoria),
-              backgroundColor: 'rgba(52, 152, 219, 0.6)',
-              borderColor: 'rgba(41, 128, 185, 1)',
-              borderWidth: 1
-            }]
-          },
-          options: { scales: { y: { beginAtZero: true } } }
-        });
-
-        new Chart(document.getElementById("gastoPorTarjeta"), {
-          type: 'bar',
-          data: {
-            labels: Object.keys(gastoPorTarjeta),
-            datasets: [{
-              label: 'Gasto por Tarjeta (Corte Actual)',
-              data: Object.values(gastoPorTarjeta),
-              backgroundColor: 'rgba(231, 76, 60, 0.6)',
-              borderColor: 'rgba(192, 57, 43, 1)',
-              borderWidth: 1
-            }]
-          },
-          options: { scales: { y: { beginAtZero: true } } }
-        });
+        datosOriginales = parseData(rep);
+        renderDashboard(datosOriginales);
       })
       .catch(err => console.error("Error cargando datos:", err));
   </script>
