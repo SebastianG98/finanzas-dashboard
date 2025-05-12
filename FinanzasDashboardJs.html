@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Finanzas Personales</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; }
+    h1 { color: #2E86C1; }
+    .container { max-width: 1000px; margin: auto; }
+    canvas { margin-top: 40px; }
+    button {
+      padding: 10px 20px; background-color: #2E86C1; color: white;
+      border: none; border-radius: 5px; cursor: pointer; margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Dashboard Finanzas Personales Gueguero</h1>
+    <p id="resumen"></p>
+    <canvas id="gastosPorCategoria"></canvas>
+    <canvas id="gastosPorTarjeta"></canvas>
+
+    <button onclick="generarInsight()">Obtener Insight con ChatGPT</button>
+    <p id="insight"></p>
+  </div>
+
+  <script>
+    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M';
+    const SHEET_NAME = 'Registros';
+    const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
+
+    let datos = [];
+
+    async function cargarDatos() {
+      const res = await fetch(API_URL);
+      const texto = await res.text();
+      const json = JSON.parse(texto.substr(47).slice(0, -2));
+
+      const cols = json.table.cols.map(c => c.label);
+      datos = json.table.rows.map(row => {
+        const obj = {};
+        row.c.forEach((cell, idx) => {
+          obj[cols[idx]] = cell ? cell.v : '';
+        });
+        return obj;
+      });
+
+      procesarDatos();
+    }
+
+    function procesarDatos() {
+      const ingresos = datos.filter(d => d.Tipo === 'Ingreso');
+      const gastos = datos.filter(d => d.Tipo === 'Gasto');
+
+      const totalIngresos = ingresos.reduce((s, i) => s + Number(i.Monto || 0), 0);
+      const totalGastos = gastos.reduce((s, g) => s + Number(g.Monto || 0), 0);
+      const saldo = totalIngresos - totalGastos;
+      const ahorroRecomendado = totalIngresos * 0.2;
+
+      document.getElementById('resumen').innerHTML = `
+        <strong>Ingresos:</strong> $${totalIngresos.toFixed(2)}<br>
+        <strong>Gastos:</strong> $${totalGastos.toFixed(2)}<br>
+        <strong>Saldo Disponible:</strong> $${saldo.toFixed(2)}<br>
+        <strong>Ahorro Recomendado:</strong> $${ahorroRecomendado.toFixed(2)}
+      `;
+
+      const gastoCat = {};
+      const gastoTar = {};
+      for (let g of gastos) {
+        gastoCat[g.Categoría] = (gastoCat[g.Categoría] || 0) + Number(g.Monto);
+        gastoTar[g.Tarjeta] = (gastoTar[g.Tarjeta] || 0) + Number(g.Monto);
+      }
+
+      generarGrafico('gastosPorCategoria', 'Gasto por Categoría', gastoCat);
+      generarGrafico('gastosPorTarjeta', 'Gasto por Tarjeta', gastoTar);
+    }
+
+    function generarGrafico(canvasId, titulo, datos) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(datos),
+          datasets: [{
+            label: titulo,
+            data: Object.values(datos),
+            backgroundColor: '#2E86C1'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false }, title: { display: true, text: titulo } }
+        }
+      });
+    }
+
+    function generarInsight() {
+      document.getElementById('insight').innerText = '🔒 Esta funcionalidad necesita un backend para proteger tu API Key de ChatGPT.';
+    }
+
+    cargarDatos();
+  </script>
+</body>
+</html>
