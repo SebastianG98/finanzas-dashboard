@@ -6,11 +6,13 @@
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     h1, h2 { color: #2C3E50; }
-    .kpi-box, .tarjeta-cards, .filtro-box, .leyenda-box { margin: 10px 0; }
+    .section { margin: 20px 0; }
     .card { display: inline-block; background: #f7f7f7; padding: 15px; border: 1px solid #ccc; border-radius: 8px; margin: 10px; }
-    canvas { max-width: 700px; margin-bottom: 40px; display: block; }
-    input[type="date"] { margin: 5px; padding: 5px; }
+    canvas { max-width: 100%; height: 300px; }
+    .charts-container { display: flex; flex-wrap: wrap; gap: 20px; }
+    .chart-box { flex: 1 1 45%; }
     .leyenda-box { font-size: 14px; color: #555; background: #eef; padding: 10px; border-radius: 6px; }
+    input[type="date"] { margin: 5px; padding: 5px; }
   </style>
 </head>
 <body>
@@ -23,24 +25,29 @@
     </p>
   </div>
 
-  <div class="filtro-box">
+  <div class="section" id="estadoActual"></div>
+
+  <div class="section">
     <label>Fecha inicio: <input type="date" id="fechaInicio"></label>
     <label>Fecha fin: <input type="date" id="fechaFin"></label>
     <button onclick="filtrarDatos()">Aplicar Filtro</button>
   </div>
 
-  <div class="kpi-box" id="kpis"></div>
-  <div class="tarjeta-cards" id="tarjetaCards"></div>
+  <div class="section" id="kpis"></div>
+  <div class="section" id="tarjetaCards"></div>
 
-  <canvas id="gastoPorCategoria"></canvas>
-  <canvas id="gastoPorTarjeta"></canvas>
+  <div class="section charts-container">
+    <div class="chart-box"><canvas id="gastoPorCategoria"></canvas></div>
+    <div class="chart-box"><canvas id="gastoPorTarjeta"></canvas></div>
+  </div>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza por tu Sheet real
+    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza con tu Sheet ID
     const SHEET_NAME = 'Registros';
     const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
 
     let datosOriginales = [];
+    let chartCategoria, chartTarjeta;
 
     function isInCurrentCut(fechaStr, inicioStr, finStr) {
       if (!fechaStr || !inicioStr || !finStr) return false;
@@ -53,7 +60,7 @@
     function parseData(raw) {
       const jsonData = JSON.parse(raw.substring(47).slice(0, -2));
       return jsonData.table.rows.map(row => ({
-        fecha: row.c[0]?.f || row.c[0]?.v || "", // usa string de fecha
+        fecha: row.c[0]?.f || row.c[0]?.v || "",
         monto: parseFloat(row.c[1]?.v || 0),
         tipo: row.c[2]?.v || "",
         tarjeta: row.c[3]?.v || "",
@@ -69,30 +76,8 @@
       }));
     }
 
-    function filtrarDatos() {
-      const inicioInput = document.getElementById('fechaInicio').value;
-      const finInput = document.getElementById('fechaFin').value;
-
-      if (!inicioInput || !finInput) {
-        alert("Por favor selecciona una fecha de inicio y una de fin.");
-        return;
-      }
-
-      const inicio = new Date(inicioInput);
-      const fin = new Date(new Date(finInput).setHours(23, 59, 59, 999));
-
-      const filtrados = datosOriginales.filter(d => {
-        if (!d.fecha) return false;
-        const fechaGasto = new Date(d.fecha);
-        return fechaGasto >= inicio && fechaGasto <= fin;
-      });
-
-      renderDashboard(filtrados);
-    }
-
-    function renderDashboard(data) {
-      let ingresos = 0, gastos = 0, ahorro = 0, inversion = 0;
-      let gastoPorCategoria = {}, gastoPorTarjeta = {}, tarjetasActivas = {};
+    function renderEstadoActual(data) {
+      let ingresos = 0, gastos = 0, ahorro = 0, inversion = 0, tarjetasActivas = {};
 
       data.forEach(d => {
         if (d.tipo === 'Ingreso') ingresos += d.monto;
@@ -101,8 +86,57 @@
           else ahorro += d.monto;
         } else if (d.tipo === 'Gasto') {
           gastos += d.monto;
-          gastoPorCategoria[d.categoria] = (gastoPorCategoria[d.categoria] || 0) + d.monto;
-          gastoPorTarjeta[d.tarjeta] = (gastoPorTarjeta[d.tarjeta] || 0) + d.monto;
+          if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
+            tarjetasActivas[d.tarjeta] = (tarjetasActivas[d.tarjeta] || 0) + d.monto;
+          }
+        }
+      });
+
+      const disponible = ingresos - gastos - ahorro - inversion;
+      let cards = '';
+      for (let t in tarjetasActivas) {
+        cards += `<div class="card"><strong>${t}</strong><br>$${tarjetasActivas[t].toFixed(2)}</div>`;
+      }
+
+      document.getElementById('estadoActual').innerHTML = `
+        <h2>Estado Actual (sin filtros)</h2>
+        <p><strong>Disponible:</strong> $${disponible.toFixed(2)} | 
+           <strong>Ahorro Total:</strong> $${ahorro.toFixed(2)} | 
+           <strong>Deuda Tarjetas en Corte Activo:</strong></p>
+        ${cards}
+      `;
+    }
+
+    function filtrarDatos() {
+      const inicioInput = document.getElementById('fechaInicio').value;
+      const finInput = document.getElementById('fechaFin').value;
+      if (!inicioInput || !finInput) return alert("Selecciona ambas fechas.");
+
+      const inicio = new Date(inicioInput);
+      const fin = new Date(new Date(finInput).setHours(23, 59, 59, 999));
+
+      const filtrados = datosOriginales.filter(d => {
+        if (!d.fecha) return false;
+        const f = new Date(d.fecha);
+        return f >= inicio && f <= fin;
+      });
+
+      renderDashboard(filtrados);
+    }
+
+    function renderDashboard(data) {
+      let ingresos = 0, gastos = 0, ahorro = 0, inversion = 0;
+      let porCategoria = {}, porTarjeta = {}, tarjetasActivas = {};
+
+      data.forEach(d => {
+        if (d.tipo === 'Ingreso') ingresos += d.monto;
+        else if (d.tipo === 'Ahorro/Inversion') {
+          if (d.categoria.toLowerCase().includes('invers')) inversion += d.monto;
+          else ahorro += d.monto;
+        } else if (d.tipo === 'Gasto') {
+          gastos += d.monto;
+          porCategoria[d.categoria] = (porCategoria[d.categoria] || 0) + d.monto;
+          porTarjeta[d.tarjeta] = (porTarjeta[d.tarjeta] || 0) + d.monto;
 
           if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
             tarjetasActivas[d.tarjeta] = (tarjetasActivas[d.tarjeta] || 0) + d.monto;
@@ -113,7 +147,7 @@
       const disponible = ingresos - gastos - ahorro - inversion;
 
       document.getElementById('kpis').innerHTML = `
-        <h2>Resumen</h2>
+        <h2>Resumen del Filtro</h2>
         <p><strong>Ingresos:</strong> $${ingresos.toFixed(2)}</p>
         <p><strong>Gastos:</strong> $${gastos.toFixed(2)}</p>
         <p><strong>Ahorro:</strong> $${ahorro.toFixed(2)}</p>
@@ -121,40 +155,42 @@
         <p><strong>Disponible:</strong> $${disponible.toFixed(2)}</p>
       `;
 
-      let cardsHTML = '<h2>Tarjetas en Corte Activo</h2>';
+      let tarjetaCards = '<h2>Tarjetas en Corte Activo (según filtro)</h2>';
       for (let tarjeta in tarjetasActivas) {
-        cardsHTML += `<div class="card"><strong>${tarjeta}</strong><br>$${tarjetasActivas[tarjeta].toFixed(2)}</div>`;
+        tarjetaCards += `<div class="card"><strong>${tarjeta}</strong><br>$${tarjetasActivas[tarjeta].toFixed(2)}</div>`;
       }
-      document.getElementById('tarjetaCards').innerHTML = cardsHTML;
+      document.getElementById('tarjetaCards').innerHTML = tarjetaCards;
 
-      new Chart(document.getElementById("gastoPorCategoria"), {
+      if (chartCategoria) chartCategoria.destroy();
+      chartCategoria = new Chart(document.getElementById("gastoPorCategoria"), {
         type: 'bar',
         data: {
-          labels: Object.keys(gastoPorCategoria),
+          labels: Object.keys(porCategoria),
           datasets: [{
             label: 'Gasto por Categoría',
-            data: Object.values(gastoPorCategoria),
+            data: Object.values(porCategoria),
             backgroundColor: 'rgba(52, 152, 219, 0.6)',
             borderColor: 'rgba(41, 128, 185, 1)',
             borderWidth: 1
           }]
         },
-        options: { scales: { y: { beginAtZero: true } } }
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
       });
 
-      new Chart(document.getElementById("gastoPorTarjeta"), {
+      if (chartTarjeta) chartTarjeta.destroy();
+      chartTarjeta = new Chart(document.getElementById("gastoPorTarjeta"), {
         type: 'bar',
         data: {
-          labels: Object.keys(gastoPorTarjeta),
+          labels: Object.keys(porTarjeta),
           datasets: [{
-            label: 'Gasto por Tarjeta (según filtro)',
-            data: Object.values(gastoPorTarjeta),
+            label: 'Gasto por Tarjeta',
+            data: Object.values(porTarjeta),
             backgroundColor: 'rgba(231, 76, 60, 0.6)',
             borderColor: 'rgba(192, 57, 43, 1)',
             borderWidth: 1
           }]
         },
-        options: { scales: { y: { beginAtZero: true } } }
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
       });
     }
 
@@ -162,7 +198,8 @@
       .then(res => res.text())
       .then(rep => {
         datosOriginales = parseData(rep);
-        renderDashboard(datosOriginales);
+        renderEstadoActual(datosOriginales);
+        renderDashboard(datosOriginales); // carga inicial con todo
       })
       .catch(err => console.error("Error cargando datos:", err));
   </script>
