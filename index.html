@@ -28,7 +28,7 @@
   <canvas id="gastoPorTarjeta"></canvas>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // <- reemplaza por el ID de tu hoja de cálculo
+    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza por el ID real de tu Google Sheets
     const SHEET_NAME = 'Registros';
     const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
 
@@ -63,7 +63,8 @@
 
     function filtrarDatos() {
       const inicio = new Date(document.getElementById('fechaInicio').value);
-      const fin = new Date(document.getElementById('fechaFin').value);
+      const finInput = new Date(document.getElementById('fechaFin').value);
+      const fin = new Date(finInput.setHours(23, 59, 59, 999)); // incluye todo el día
 
       const filtrados = datosOriginales.filter(d => {
         const fecha = new Date(d.fecha);
