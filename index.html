@@ -1,15 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Finanzas Personales – Registro y Dashboard</title>
+  <title>Finanzas Personales – Registro, Dashboard y Tabla</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     .view { display: none; }
     .visible { display: block; }
     label { display: block; margin-top: 10px; }
     input, select, textarea { width: 100%; padding: 5px; margin-top: 5px; }
-    button { margin-top: 20px; padding: 10px 20px; }
+    button { margin-top: 10px; padding: 8px 16px; }
     .toggle-buttons { margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    th { background-color: #f2f2f2; }
   </style>
 </head>
 <body>
@@ -19,6 +22,7 @@
   <div class="toggle-buttons">
     <button onclick="mostrarVista('registro')">📝 Registrar Gasto</button>
     <button onclick="mostrarVista('dashboard')">📊 Ver Dashboard</button>
+    <button onclick="mostrarVista('tabla')">📋 Ver y Editar Registros</button>
     <button onclick="descargarCSV()">📥 Exportar CSV</button>
   </div>
 
@@ -57,14 +61,23 @@
     <ul id="lista-registros"></ul>
   </div>
 
+  <!-- Vista tipo Excel -->
+  <div id="vista-tabla" class="view">
+    <h2>Ver, Editar y Borrar Registros</h2>
+    <table id="tabla-datos">
+      <thead id="tabla-encabezado"></thead>
+      <tbody id="tabla-cuerpo"></tbody>
+    </table>
+  </div>
+
   <script>
     const STORAGE_KEY = "finanzas_datos";
 
     function mostrarVista(id) {
-      document.getElementById("vista-registro").classList.remove("visible");
-      document.getElementById("vista-dashboard").classList.remove("visible");
+      document.querySelectorAll(".view").forEach(div => div.classList.remove("visible"));
       document.getElementById("vista-" + id).classList.add("visible");
       if (id === "dashboard") mostrarRegistros();
+      if (id === "tabla") renderTabla();
     }
 
     function obtenerDatos() {
@@ -96,6 +109,42 @@
         li.textContent = `${item.fecha} | ${item.tipo} | $${item.monto} | ${item.categoria}`;
         lista.appendChild(li);
       });
+    }
+
+    function renderTabla() {
+      const datos = obtenerDatos();
+      const tablaEncabezado = document.getElementById("tabla-encabezado");
+      const tablaCuerpo = document.getElementById("tabla-cuerpo");
+      tablaEncabezado.innerHTML = "";
+      tablaCuerpo.innerHTML = "";
+
+      if (!datos.length) return;
+
+      const encabezados = Object.keys(datos[0]);
+      const filaEncabezado = "<tr>" + encabezados.map(h => `<th>${h}</th>`).join("") + "<th>Acción</th></tr>";
+      tablaEncabezado.innerHTML = filaEncabezado;
+
+      datos.forEach((fila, index) => {
+        const celdas = encabezados.map(campo =>
+          `<td contenteditable="true" oninput="actualizarCampo(${index}, '${campo}', this.innerText)">${fila[campo] || ""}</td>`).join("");
+        const botonEliminar = `<td><button onclick="eliminarRegistro(${index})">🗑️</button></td>`;
+        tablaCuerpo.innerHTML += `<tr>${celdas}${botonEliminar}</tr>`;
+      });
+    }
+
+    function actualizarCampo(index, campo, valor) {
+      const datos = obtenerDatos();
+      datos[index][campo] = valor;
+      guardarDatos(datos);
+    }
+
+    function eliminarRegistro(index) {
+      const datos = obtenerDatos();
+      if (confirm("¿Estás seguro de que deseas eliminar este registro?")) {
+        datos.splice(index, 1);
+        guardarDatos(datos);
+        renderTabla();
+      }
     }
 
     function descargarCSV() {
