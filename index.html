@@ -1,138 +1,120 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Dashboard Finanzas Mensual</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Finanzas Personales – Registro y Dashboard</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
-    h1, h2 { color: #2C3E50; }
-    .selector, .meta-box, .kpi-box, .alerta-box, .cards, .charts, .leyenda, .refrescar-box { margin: 20px 0; }
-    .card { display: inline-block; background: #f7f7f7; padding: 15px; border: 1px solid #ccc; border-radius: 8px; margin: 10px; min-width: 120px; }
-    .chart-row { display: flex; flex-wrap: wrap; gap: 20px; }
-    .chart-box { flex: 1 1 45%; }
-    canvas { max-width: 100%; height: auto; }
-    input[type="number"], select { padding: 5px; margin-left: 10px; }
-    .leyenda { font-size: 14px; background: #eef; padding: 10px; border-radius: 6px; }
-    button { padding: 6px 12px; cursor: pointer; }
+    .view { display: none; }
+    .visible { display: block; }
+    label { display: block; margin-top: 10px; }
+    input, select, textarea { width: 100%; padding: 5px; margin-top: 5px; }
+    button { margin-top: 20px; padding: 10px 20px; }
+    .toggle-buttons { margin-bottom: 20px; }
   </style>
 </head>
 <body>
-  <h1>Dashboard Finanzas Mensual</h1>
 
-  <div class="leyenda">
-    <p>
-      📅 Selecciona el mes (hoja) para analizar. Todos los datos vienen desde un Google Sheets público.<br>
-      ⚠️ La meta mensual te permite configurar alertas y comparaciones visuales.
-    </p>
+  <h1>Finanzas Personales</h1>
+
+  <div class="toggle-buttons">
+    <button onclick="mostrarVista('registro')">📝 Registrar Gasto</button>
+    <button onclick="mostrarVista('dashboard')">📊 Ver Dashboard</button>
+    <button onclick="descargarCSV()">📥 Exportar CSV</button>
   </div>
 
-  <div class="selector">
-    <label for="mes">Seleccionar mes:</label>
-    <select id="mes" onchange="cambiarHoja()">
-      <option value="Enero">Enero</option>
-      <option value="Febrero">Febrero</option>
-      <option value="Marzo">Marzo</option>
-      <option value="Abril">Abril</option>
-      <option value="Mayo">Mayo</option>
-      <option value="Junio">Junio</option>
-      <option value="Julio">Julio</option>
-      <option value="Agosto">Agosto</option>
-      <option value="Septiembre">Septiembre</option>
-      <option value="Octubre">Octubre</option>
-      <option value="Noviembre">Noviembre</option>
-      <option value="Diciembre">Diciembre</option>
-      <option value="Todos">Todos</option>
-    </select>
+  <!-- Vista de Registro -->
+  <div id="vista-registro" class="view visible">
+    <h2>Registrar nuevo gasto o ingreso</h2>
+    <form id="formulario">
+      <label>Fecha <input type="date" name="fecha" required></label>
+      <label>Monto <input type="number" name="monto" step="0.01" required></label>
+      <label>Tipo
+        <select name="tipo" required>
+          <option value="Gasto">Gasto</option>
+          <option value="Ingreso">Ingreso</option>
+          <option value="Ahorro/Inversion">Ahorro/Inversion</option>
+        </select>
+      </label>
+      <label>Tarjeta <input type="text" name="tarjeta"></label>
+      <label>Concepto <input type="text" name="concepto"></label>
+      <label>Tienda <input type="text" name="tienda"></label>
+      <label>Categoría <input type="text" name="categoria"></label>
+      <label>MSI <input type="number" name="msi"></label>
+      <label>Total MSI <input type="number" name="total_msi"></label>
+      <label>Fecha Inicio Corte <input type="date" name="fecha_inicio_corte"></label>
+      <label>Fecha Corte <input type="date" name="fecha_corte"></label>
+      <label>Fecha Pago <input type="date" name="fecha_pago"></label>
+      <label>Notas <textarea name="notas" rows="2"></textarea></label>
+
+      <button type="submit">➕ Agregar</button>
+    </form>
   </div>
 
-  <div class="meta-box">
-    <label for="metaGasto">Meta mensual de gasto: $</label>
-    <input type="number" id="metaGasto" value="15000" onchange="renderDashboard(datosFiltrados)">
-  </div>
-
-  <div class="refrescar-box">
-    <button onclick="cargarDatos()">🔄 Refrescar datos</button>
-  </div>
-
-  <div class="alerta-box" id="alerta"></div>
-
-  <div class="kpi-box" id="kpis"></div>
-  <div class="cards" id="cardsTarjetas"></div>
-
-  <div class="charts">
-    <div class="chart-row">
-      <div class="chart-box"><canvas id="graficoCategoria"></canvas></div>
-      <div class="chart-box"><canvas id="graficoTarjetas"></canvas></div>
-    </div>
-    <div class="chart-row">
-      <div class="chart-box"><canvas id="graficoDiario"></canvas></div>
-      <div class="chart-box"><canvas id="graficoAcumulado"></canvas></div>
-    </div>
-    <div class="chart-row">
-      <div class="chart-box"><canvas id="graficoPromedio"></canvas></div>
-    </div>
+  <!-- Vista de Dashboard -->
+  <div id="vista-dashboard" class="view">
+    <h2>Dashboard (en construcción)</h2>
+    <p>Próximamente verás aquí tu resumen financiero visualizado.</p>
+    <ul id="lista-registros"></ul>
   </div>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M';  // Cambia por tu ID real de Google Sheets
-    let datosFiltrados = [];
-    const mesesDisponibles = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    let hojaActual = mesesDisponibles[new Date().getMonth()];
+    const STORAGE_KEY = "finanzas_datos";
 
-    document.getElementById('mes').value = hojaActual;
-
-    function cambiarHoja() {
-      hojaActual = document.getElementById('mes').value;
-      cargarDatos();
+    function mostrarVista(id) {
+      document.getElementById("vista-registro").classList.remove("visible");
+      document.getElementById("vista-dashboard").classList.remove("visible");
+      document.getElementById("vista-" + id).classList.add("visible");
+      if (id === "dashboard") mostrarRegistros();
     }
 
-    async function cargarDatos() {
-      const sheetName = hojaActual;
-      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${sheetName}&tqx=out:json`;
-
-      try {
-        const res = await fetch(url);
-        const text = await res.text();
-        const json = JSON.parse(text.substring(47).slice(0, -2));
-        const rows = json.table.rows;
-
-        datosFiltrados = rows.map(row => ({
-          fecha: row.c[0]?.f || row.c[0]?.v || '',
-          monto: parseFloat(row.c[1]?.v || 0),
-          tipo: row.c[2]?.v || '',
-          tarjeta: row.c[3]?.v || '',
-          concepto: row.c[4]?.v || '',
-          tienda: row.c[5]?.v || '',
-          categoria: row.c[6]?.v || '',
-          msi: parseInt(row.c[7]?.v || 0),
-          total_msi: parseInt(row.c[8]?.v || 0),
-          fechaInicioCorte: row.c[9]?.f || '',
-          fechaCorte: row.c[10]?.f || '',
-          fechaPago: row.c[11]?.f || '',
-          notas: row.c[12]?.v || ''
-        }));
-
-        renderDashboard(datosFiltrados);
-      } catch (error) {
-        alert("Error cargando los datos. Verifica que la hoja exista y sea pública.");
-        console.error(error);
-      }
+    function obtenerDatos() {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     }
 
-    function renderDashboard(data) {
-      document.getElementById('kpis').innerHTML = `<p><em>Cargando KPIs y gráficas...</em></p>`;
-      document.getElementById('cardsTarjetas').innerHTML = '';
-      document.getElementById('alerta').innerHTML = '';
-
-      // Aquí se colocarán los cálculos de KPIs, alertas y gráficos en la siguiente etapa
+    function guardarDatos(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }
 
-    window.onload = () => {
-      document.getElementById('mes').value = hojaActual;
-      cargarDatos();
-    };
+    document.getElementById("formulario").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const nuevo = {};
+      formData.forEach((value, key) => { nuevo[key] = value; });
+      const datos = obtenerDatos();
+      datos.push(nuevo);
+      guardarDatos(datos);
+      alert("Registro agregado.");
+      e.target.reset();
+    });
+
+    function mostrarRegistros() {
+      const lista = document.getElementById("lista-registros");
+      const datos = obtenerDatos();
+      lista.innerHTML = "";
+      datos.forEach((item, i) => {
+        const li = document.createElement("li");
+        li.textContent = `${item.fecha} | ${item.tipo} | $${item.monto} | ${item.categoria}`;
+        lista.appendChild(li);
+      });
+    }
+
+    function descargarCSV() {
+      const datos = obtenerDatos();
+      if (!datos.length) return alert("No hay datos para exportar.");
+      const encabezado = Object.keys(datos[0]);
+      const filas = datos.map(obj => encabezado.map(key => `"${obj[key] || ''}"`).join(","));
+      const csv = [encabezado.join(","), ...filas].join("\\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "finanzas.csv");
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   </script>
+
 </body>
 </html>
