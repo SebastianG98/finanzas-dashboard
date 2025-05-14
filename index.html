@@ -74,9 +74,12 @@
   </div>
 
   <script>
-    const SHEET_ID = 'REEMPLAZAR_POR_TU_ID';  // Cambia por tu ID real de Google Sheets
+    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M';  // Cambia por tu ID real de Google Sheets
     let datosFiltrados = [];
-    let hojaActual = 'Mayo';
+    const mesesDisponibles = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    let hojaActual = mesesDisponibles[new Date().getMonth()];
 
     document.getElementById('mes').value = hojaActual;
 
