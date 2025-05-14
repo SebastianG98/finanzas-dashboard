@@ -1,207 +1,135 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Dashboard Finanzas Personales</title>
+  <title>Dashboard Finanzas Mensual</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     h1, h2 { color: #2C3E50; }
-    .section { margin: 20px 0; }
-    .card { display: inline-block; background: #f7f7f7; padding: 15px; border: 1px solid #ccc; border-radius: 8px; margin: 10px; }
-    canvas { max-width: 100%; height: 300px; }
-    .charts-container { display: flex; flex-wrap: wrap; gap: 20px; }
+    .selector, .meta-box, .kpi-box, .alerta-box, .cards, .charts, .leyenda, .refrescar-box { margin: 20px 0; }
+    .card { display: inline-block; background: #f7f7f7; padding: 15px; border: 1px solid #ccc; border-radius: 8px; margin: 10px; min-width: 120px; }
+    .chart-row { display: flex; flex-wrap: wrap; gap: 20px; }
     .chart-box { flex: 1 1 45%; }
-    .leyenda-box { font-size: 14px; color: #555; background: #eef; padding: 10px; border-radius: 6px; }
-    input[type="date"] { margin: 5px; padding: 5px; }
+    canvas { max-width: 100%; height: auto; }
+    input[type="number"], select { padding: 5px; margin-left: 10px; }
+    .leyenda { font-size: 14px; background: #eef; padding: 10px; border-radius: 6px; }
+    button { padding: 6px 12px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h1>Dashboard de Finanzas Personales</h1>
+  <h1>Dashboard Finanzas Mensual</h1>
 
-  <div class="leyenda-box">
+  <div class="leyenda">
     <p>
-      🔎 <strong>Filtro de fechas:</strong> afecta los ingresos, gastos, ahorro, inversión y gráficos. Se basa en la <strong>fecha de compra</strong> (columna <code>Fecha</code>).<br>
-      💳 <strong>Tarjetas en Corte Activo:</strong> se calculan aparte usando <code>Fecha Inicio Corte</code> y <code>Fecha Corte</code> por registro, independientemente del filtro.
+      📅 Selecciona el mes (hoja) para analizar. Todos los datos vienen desde un Google Sheets público.<br>
+      ⚠️ La meta mensual te permite configurar alertas y comparaciones visuales.
     </p>
   </div>
 
-  <div class="section" id="estadoActual"></div>
-
-  <div class="section">
-    <label>Fecha inicio: <input type="date" id="fechaInicio"></label>
-    <label>Fecha fin: <input type="date" id="fechaFin"></label>
-    <button onclick="filtrarDatos()">Aplicar Filtro</button>
+  <div class="selector">
+    <label for="mes">Seleccionar mes:</label>
+    <select id="mes" onchange="cambiarHoja()">
+      <option value="Enero">Enero</option>
+      <option value="Febrero">Febrero</option>
+      <option value="Marzo">Marzo</option>
+      <option value="Abril">Abril</option>
+      <option value="Mayo">Mayo</option>
+      <option value="Junio">Junio</option>
+      <option value="Julio">Julio</option>
+      <option value="Agosto">Agosto</option>
+      <option value="Septiembre">Septiembre</option>
+      <option value="Octubre">Octubre</option>
+      <option value="Noviembre">Noviembre</option>
+      <option value="Diciembre">Diciembre</option>
+      <option value="Todos">Todos</option>
+    </select>
   </div>
 
-  <div class="section" id="kpis"></div>
-  <div class="section" id="tarjetaCards"></div>
+  <div class="meta-box">
+    <label for="metaGasto">Meta mensual de gasto: $</label>
+    <input type="number" id="metaGasto" value="15000" onchange="renderDashboard(datosFiltrados)">
+  </div>
 
-  <div class="section charts-container">
-    <div class="chart-box"><canvas id="gastoPorCategoria"></canvas></div>
-    <div class="chart-box"><canvas id="gastoPorTarjeta"></canvas></div>
+  <div class="refrescar-box">
+    <button onclick="cargarDatos()">🔄 Refrescar datos</button>
+  </div>
+
+  <div class="alerta-box" id="alerta"></div>
+
+  <div class="kpi-box" id="kpis"></div>
+  <div class="cards" id="cardsTarjetas"></div>
+
+  <div class="charts">
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="graficoCategoria"></canvas></div>
+      <div class="chart-box"><canvas id="graficoTarjetas"></canvas></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="graficoDiario"></canvas></div>
+      <div class="chart-box"><canvas id="graficoAcumulado"></canvas></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="graficoPromedio"></canvas></div>
+    </div>
   </div>
 
   <script>
-    const SHEET_ID = '12rTEkzfIM2_h8UiW8D-SP1GKX_AE9zj5MKreaiFZB3M'; // Reemplaza con tu Sheet ID
-    const SHEET_NAME = 'Registros';
-    const API_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${SHEET_NAME}&tqx=out:json`;
+    const SHEET_ID = 'REEMPLAZAR_POR_TU_ID';  // Cambia por tu ID real de Google Sheets
+    let datosFiltrados = [];
+    let hojaActual = 'Mayo';
 
-    let datosOriginales = [];
-    let chartCategoria, chartTarjeta;
+    document.getElementById('mes').value = hojaActual;
 
-    function isInCurrentCut(fechaStr, inicioStr, finStr) {
-      if (!fechaStr || !inicioStr || !finStr) return false;
-      const fecha = new Date(fechaStr);
-      const inicio = new Date(inicioStr);
-      const fin = new Date(finStr);
-      return fecha >= inicio && fecha <= fin;
+    function cambiarHoja() {
+      hojaActual = document.getElementById('mes').value;
+      cargarDatos();
     }
 
-    function parseData(raw) {
-      const jsonData = JSON.parse(raw.substring(47).slice(0, -2));
-      return jsonData.table.rows.map(row => ({
-        fecha: row.c[0]?.f || row.c[0]?.v || "",
-        monto: parseFloat(row.c[1]?.v || 0),
-        tipo: row.c[2]?.v || "",
-        tarjeta: row.c[3]?.v || "",
-        concepto: row.c[4]?.v || "",
-        tienda: row.c[5]?.v || "",
-        categoria: row.c[6]?.v || "",
-        msi: parseInt(row.c[7]?.v || 0),
-        total_msi: parseInt(row.c[8]?.v || 0),
-        inicio_corte: row.c[9]?.f || row.c[9]?.v || "",
-        fin_corte: row.c[10]?.f || row.c[10]?.v || "",
-        fecha_pago: row.c[11]?.f || row.c[11]?.v || "",
-        notas: row.c[12]?.v || ""
-      }));
-    }
+    async function cargarDatos() {
+      const sheetName = hojaActual;
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${sheetName}&tqx=out:json`;
 
-    function renderEstadoActual(data) {
-      let ingresos = 0, gastos = 0, ahorro = 0, inversion = 0, tarjetasActivas = {};
+      try {
+        const res = await fetch(url);
+        const text = await res.text();
+        const json = JSON.parse(text.substring(47).slice(0, -2));
+        const rows = json.table.rows;
 
-      data.forEach(d => {
-        if (d.tipo === 'Ingreso') ingresos += d.monto;
-        else if (d.tipo === 'Ahorro/Inversion') {
-          if (d.categoria.toLowerCase().includes('invers')) inversion += d.monto;
-          else ahorro += d.monto;
-        } else if (d.tipo === 'Gasto') {
-          gastos += d.monto;
-          if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
-            tarjetasActivas[d.tarjeta] = (tarjetasActivas[d.tarjeta] || 0) + d.monto;
-          }
-        }
-      });
+        datosFiltrados = rows.map(row => ({
+          fecha: row.c[0]?.f || row.c[0]?.v || '',
+          monto: parseFloat(row.c[1]?.v || 0),
+          tipo: row.c[2]?.v || '',
+          tarjeta: row.c[3]?.v || '',
+          concepto: row.c[4]?.v || '',
+          tienda: row.c[5]?.v || '',
+          categoria: row.c[6]?.v || '',
+          msi: parseInt(row.c[7]?.v || 0),
+          total_msi: parseInt(row.c[8]?.v || 0),
+          fechaInicioCorte: row.c[9]?.f || '',
+          fechaCorte: row.c[10]?.f || '',
+          fechaPago: row.c[11]?.f || '',
+          notas: row.c[12]?.v || ''
+        }));
 
-      const disponible = ingresos - gastos - ahorro - inversion;
-      let cards = '';
-      for (let t in tarjetasActivas) {
-        cards += `<div class="card"><strong>${t}</strong><br>$${tarjetasActivas[t].toFixed(2)}</div>`;
+        renderDashboard(datosFiltrados);
+      } catch (error) {
+        alert("Error cargando los datos. Verifica que la hoja exista y sea pública.");
+        console.error(error);
       }
-
-      document.getElementById('estadoActual').innerHTML = `
-        <h2>Estado Actual (sin filtros)</h2>
-        <p><strong>Disponible:</strong> $${disponible.toFixed(2)} | 
-           <strong>Ahorro Total:</strong> $${ahorro.toFixed(2)} | 
-           <strong>Deuda Tarjetas en Corte Activo:</strong></p>
-        ${cards}
-      `;
-    }
-
-    function filtrarDatos() {
-      const inicioInput = document.getElementById('fechaInicio').value;
-      const finInput = document.getElementById('fechaFin').value;
-      if (!inicioInput || !finInput) return alert("Selecciona ambas fechas.");
-
-      const inicio = new Date(inicioInput);
-      const fin = new Date(new Date(finInput).setHours(23, 59, 59, 999));
-
-      const filtrados = datosOriginales.filter(d => {
-        if (!d.fecha) return false;
-        const f = new Date(d.fecha);
-        return f >= inicio && f <= fin;
-      });
-
-      renderDashboard(filtrados);
     }
 
     function renderDashboard(data) {
-      let ingresos = 0, gastos = 0, ahorro = 0, inversion = 0;
-      let porCategoria = {}, porTarjeta = {}, tarjetasActivas = {};
+      document.getElementById('kpis').innerHTML = `<p><em>Cargando KPIs y gráficas...</em></p>`;
+      document.getElementById('cardsTarjetas').innerHTML = '';
+      document.getElementById('alerta').innerHTML = '';
 
-      data.forEach(d => {
-        if (d.tipo === 'Ingreso') ingresos += d.monto;
-        else if (d.tipo === 'Ahorro/Inversion') {
-          if (d.categoria.toLowerCase().includes('invers')) inversion += d.monto;
-          else ahorro += d.monto;
-        } else if (d.tipo === 'Gasto') {
-          gastos += d.monto;
-          porCategoria[d.categoria] = (porCategoria[d.categoria] || 0) + d.monto;
-          porTarjeta[d.tarjeta] = (porTarjeta[d.tarjeta] || 0) + d.monto;
-
-          if (isInCurrentCut(d.fecha, d.inicio_corte, d.fin_corte)) {
-            tarjetasActivas[d.tarjeta] = (tarjetasActivas[d.tarjeta] || 0) + d.monto;
-          }
-        }
-      });
-
-      const disponible = ingresos - gastos - ahorro - inversion;
-
-      document.getElementById('kpis').innerHTML = `
-        <h2>Resumen del Filtro</h2>
-        <p><strong>Ingresos:</strong> $${ingresos.toFixed(2)}</p>
-        <p><strong>Gastos:</strong> $${gastos.toFixed(2)}</p>
-        <p><strong>Ahorro:</strong> $${ahorro.toFixed(2)}</p>
-        <p><strong>Inversión:</strong> $${inversion.toFixed(2)}</p>
-        <p><strong>Disponible:</strong> $${disponible.toFixed(2)}</p>
-      `;
-
-      let tarjetaCards = '<h2>Tarjetas en Corte Activo (según filtro)</h2>';
-      for (let tarjeta in tarjetasActivas) {
-        tarjetaCards += `<div class="card"><strong>${tarjeta}</strong><br>$${tarjetasActivas[tarjeta].toFixed(2)}</div>`;
-      }
-      document.getElementById('tarjetaCards').innerHTML = tarjetaCards;
-
-      if (chartCategoria) chartCategoria.destroy();
-      chartCategoria = new Chart(document.getElementById("gastoPorCategoria"), {
-        type: 'bar',
-        data: {
-          labels: Object.keys(porCategoria),
-          datasets: [{
-            label: 'Gasto por Categoría',
-            data: Object.values(porCategoria),
-            backgroundColor: 'rgba(52, 152, 219, 0.6)',
-            borderColor: 'rgba(41, 128, 185, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: { responsive: true, scales: { y: { beginAtZero: true } } }
-      });
-
-      if (chartTarjeta) chartTarjeta.destroy();
-      chartTarjeta = new Chart(document.getElementById("gastoPorTarjeta"), {
-        type: 'bar',
-        data: {
-          labels: Object.keys(porTarjeta),
-          datasets: [{
-            label: 'Gasto por Tarjeta',
-            data: Object.values(porTarjeta),
-            backgroundColor: 'rgba(231, 76, 60, 0.6)',
-            borderColor: 'rgba(192, 57, 43, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: { responsive: true, scales: { y: { beginAtZero: true } } }
-      });
+      // Aquí se colocarán los cálculos de KPIs, alertas y gráficos en la siguiente etapa
     }
 
-    fetch(API_URL)
-      .then(res => res.text())
-      .then(rep => {
-        datosOriginales = parseData(rep);
-        renderEstadoActual(datosOriginales);
-        renderDashboard(datosOriginales); // carga inicial con todo
-      })
-      .catch(err => console.error("Error cargando datos:", err));
+    window.onload = () => {
+      document.getElementById('mes').value = hojaActual;
+      cargarDatos();
+    };
   </script>
 </body>
 </html>
