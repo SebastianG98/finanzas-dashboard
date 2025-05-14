@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Finanzas Personales – Registro, Dashboard y Tabla</title>
+  <title>Finanzas Personales – Registro y Datos</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     .view { display: none; }
     .visible { display: block; }
     label { display: block; margin-top: 10px; }
-    input, select, textarea { width: 100%; padding: 5px; margin-top: 5px; }
-    button { margin-top: 10px; padding: 8px 16px; }
-    .toggle-buttons { margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-    th { background-color: #f2f2f2; }
+    input, select, textarea { padding: 5px; }
+    button { margin-top: 10px; padding: 6px 12px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    .edit-mode input, .edit-mode select, .edit-mode textarea { width: 100%; }
+    .actions { display: flex; gap: 8px; }
   </style>
 </head>
 <body>
@@ -20,15 +20,14 @@
   <h1>Finanzas Personales</h1>
 
   <div class="toggle-buttons">
-    <button onclick="mostrarVista('registro')">📝 Registrar Gasto</button>
-    <button onclick="mostrarVista('dashboard')">📊 Ver Dashboard</button>
-    <button onclick="mostrarVista('tabla')">📋 Ver y Editar Registros</button>
+    <button onclick="mostrarVista('registro')">📝 Registrar</button>
+    <button onclick="mostrarVista('data')">📋 Ver y Editar Registros</button>
     <button onclick="descargarCSV()">📥 Exportar CSV</button>
   </div>
 
-  <!-- Vista de Registro -->
+  <!-- Vista: Registro -->
   <div id="vista-registro" class="view visible">
-    <h2>Registrar nuevo gasto o ingreso</h2>
+    <h2>Registrar nuevo movimiento</h2>
     <form id="formulario">
       <label>Fecha <input type="date" name="fecha" required></label>
       <label>Monto <input type="number" name="monto" step="0.01" required></label>
@@ -49,24 +48,16 @@
       <label>Fecha Corte <input type="date" name="fecha_corte"></label>
       <label>Fecha Pago <input type="date" name="fecha_pago"></label>
       <label>Notas <textarea name="notas" rows="2"></textarea></label>
-
       <button type="submit">➕ Agregar</button>
     </form>
   </div>
 
-  <!-- Vista de Dashboard -->
-  <div id="vista-dashboard" class="view">
-    <h2>Dashboard (en construcción)</h2>
-    <p>Próximamente verás aquí tu resumen financiero visualizado.</p>
-    <ul id="lista-registros"></ul>
-  </div>
-
-  <!-- Vista tipo Excel -->
-  <div id="vista-tabla" class="view">
-    <h2>Ver, Editar y Borrar Registros</h2>
-    <table id="tabla-datos">
-      <thead id="tabla-encabezado"></thead>
-      <tbody id="tabla-cuerpo"></tbody>
+  <!-- Vista: Data Cruda -->
+  <div id="vista-data" class="view">
+    <h2>Registros guardados</h2>
+    <table id="tablaRegistros">
+      <thead></thead>
+      <tbody></tbody>
     </table>
   </div>
 
@@ -74,10 +65,10 @@
     const STORAGE_KEY = "finanzas_datos";
 
     function mostrarVista(id) {
-      document.querySelectorAll(".view").forEach(div => div.classList.remove("visible"));
+      document.getElementById("vista-registro").classList.remove("visible");
+      document.getElementById("vista-data").classList.remove("visible");
       document.getElementById("vista-" + id).classList.add("visible");
-      if (id === "dashboard") mostrarRegistros();
-      if (id === "tabla") renderTabla();
+      if (id === "data") renderTabla();
     }
 
     function obtenerDatos() {
@@ -100,47 +91,66 @@
       e.target.reset();
     });
 
-    function mostrarRegistros() {
-      const lista = document.getElementById("lista-registros");
-      const datos = obtenerDatos();
-      lista.innerHTML = "";
-      datos.forEach((item, i) => {
-        const li = document.createElement("li");
-        li.textContent = `${item.fecha} | ${item.tipo} | $${item.monto} | ${item.categoria}`;
-        lista.appendChild(li);
-      });
-    }
-
     function renderTabla() {
       const datos = obtenerDatos();
-      const tablaEncabezado = document.getElementById("tabla-encabezado");
-      const tablaCuerpo = document.getElementById("tabla-cuerpo");
-      tablaEncabezado.innerHTML = "";
-      tablaCuerpo.innerHTML = "";
+      const tabla = document.getElementById("tablaRegistros");
+      const headers = Object.keys(datos[0] || {});
+      const thead = tabla.querySelector("thead");
+      const tbody = tabla.querySelector("tbody");
+      thead.innerHTML = "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "<th>Acciones</th></tr>";
+      tbody.innerHTML = "";
 
-      if (!datos.length) return;
+      datos.forEach((registro, i) => {
+        const fila = document.createElement("tr");
+        fila.dataset.index = i;
+        fila.classList.add("registro");
 
-      const encabezados = Object.keys(datos[0]);
-      const filaEncabezado = "<tr>" + encabezados.map(h => `<th>${h}</th>`).join("") + "<th>Acción</th></tr>";
-      tablaEncabezado.innerHTML = filaEncabezado;
+        headers.forEach(key => {
+          const td = document.createElement("td");
+          td.innerHTML = `<span class="valor">${registro[key] || ""}</span>
+                          <input class="editor" type="text" value="${registro[key] || ""}" style="display:none;" data-key="${key}">`;
+          fila.appendChild(td);
+        });
 
-      datos.forEach((fila, index) => {
-        const celdas = encabezados.map(campo =>
-          `<td contenteditable="true" oninput="actualizarCampo(${index}, '${campo}', this.innerText)">${fila[campo] || ""}</td>`).join("");
-        const botonEliminar = `<td><button onclick="eliminarRegistro(${index})">🗑️</button></td>`;
-        tablaCuerpo.innerHTML += `<tr>${celdas}${botonEliminar}</tr>`;
+        const acciones = document.createElement("td");
+        acciones.className = "actions";
+        acciones.innerHTML = `
+          <button onclick="activarEdicion(this)">✏️</button>
+          <button onclick="guardarEdicion(this)" style="display:none;">✅</button>
+          <button onclick="eliminarRegistro(${i})">🗑️</button>
+        `;
+        fila.appendChild(acciones);
+        tbody.appendChild(fila);
       });
     }
 
-    function actualizarCampo(index, campo, valor) {
+    function activarEdicion(btn) {
+      const fila = btn.closest("tr");
+      fila.classList.add("edit-mode");
+      fila.querySelectorAll(".valor").forEach(span => span.style.display = "none");
+      fila.querySelectorAll(".editor").forEach(input => input.style.display = "inline-block");
+      fila.querySelector("button[onclick^='activarEdicion']").style.display = "none";
+      fila.querySelector("button[onclick^='guardarEdicion']").style.display = "inline-block";
+    }
+
+    function guardarEdicion(btn) {
+      const fila = btn.closest("tr");
+      const index = fila.dataset.index;
       const datos = obtenerDatos();
-      datos[index][campo] = valor;
+      const actualizado = { ...datos[index] };
+
+      fila.querySelectorAll(".editor").forEach(input => {
+        actualizado[input.dataset.key] = input.value;
+      });
+
+      datos[index] = actualizado;
       guardarDatos(datos);
+      renderTabla();
     }
 
     function eliminarRegistro(index) {
-      const datos = obtenerDatos();
-      if (confirm("¿Estás seguro de que deseas eliminar este registro?")) {
+      if (confirm("¿Eliminar este registro?")) {
+        const datos = obtenerDatos();
         datos.splice(index, 1);
         guardarDatos(datos);
         renderTabla();
